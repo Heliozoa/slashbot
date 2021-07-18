@@ -16,9 +16,15 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     dotenv::dotenv().ok();
     tracing_subscriber::fmt::init();
 
-    let discord_token = env::var("DISCORD_TOKEN")?;
-    let application_id: u64 = env::var("APPLICATION_ID")?.parse()?;
-    let guild_id: u64 = env::var("GUILD_ID")?.parse()?;
+    let discord_token = env::var("DISCORD_TOKEN").context("missing DISCORD_TOKEN")?;
+    let application_id: u64 = env::var("APPLICATION_ID")
+        .context("missing APPLICATION_ID")?
+        .parse()
+        .context("invalid APPLICATION_ID")?;
+    let guild_id: u64 = env::var("GUILD_ID")
+        .context("missing GUILD_ID")?
+        .parse()
+        .context("invalid GUILD_ID")?;
 
     let mut client = Client::builder(discord_token)
         .event_handler(Handler {
@@ -32,7 +38,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         Duration::from_secs(60),
         Duration::from_secs(60 * 5),
     ));
-    client.start().await?;
+    client.start().await.context("failed to start client")?;
 
     Ok(())
 }

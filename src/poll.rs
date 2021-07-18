@@ -6,16 +6,13 @@ use serenity::{
         id::{GuildId, InteractionId, UserId},
         interactions::{
             ApplicationCommand, ApplicationCommandInteractionData, ApplicationCommandOptionType,
-            ButtonStyle, Interaction, InteractionResponseType, MessageComponent,
+            ButtonStyle, Component, Interaction, InteractionMessage, InteractionResponseType,
+            MessageComponent,
         },
     },
     prelude::*,
 };
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt::Display,
-    time::Duration,
-};
+use std::{collections::HashMap, time::Duration};
 use tokio::time::Instant;
 
 pub const COMMAND: &str = "poll";
@@ -34,7 +31,8 @@ pub async fn create(guild_id: GuildId, ctx: &Context) -> anyhow::Result<Applicat
                         .required(true)
                 })
         })
-        .await?;
+        .await
+        .context("failed to create poll command")?;
     Ok(res)
 }
 
@@ -82,18 +80,14 @@ pub async fn start(
                             // create voting buttons
                             let mut row = CreateActionRow::default();
                             for option in options.iter().copied() {
-                                let mut button = CreateButton::default();
-                                button
-                                    .custom_id(option)
-                                    .label(option)
-                                    .style(ButtonStyle::Primary);
-                                row.add_button(button);
+                                row.add_button(create_vote_button(option, 0));
                             }
                             components.add_action_row(row)
                         })
                 })
         })
-        .await?;
+        .await
+        .context("failed to create response")?;
 
     // on success, store poll data
     let mut lock = POLLS.write().await;
@@ -120,13 +114,41 @@ pub async fn vote(
         .id;
     poll_data.votes.insert(user_id, component.custom_id.clone());
 
+    // create updated buttons
+    let mut row = CreateActionRow::default();
+    let msg = interaction
+        .message
+        .as_ref()
+        .context("missing message in interaction")?;
+    // the first (and only) action row should contain only the voting buttons
+    let button_row = if let InteractionMessage::Regular(msg) = msg {
+        msg.components.first().context("missing action row")?
+    } else {
+        anyhow::bail!("invalid message type in interaction");
+    };
+    if let Component::ActionRow(button_row) = button_row {
+        for component in button_row.components.iter() {
+            if let Component::Button(b) = component {
+                let custom_id = b.custom_id.as_ref().context("missing custom id")?;
+                let votes = poll_data.votes_for(custom_id);
+                row.add_button(create_vote_button(custom_id, votes));
+            } else {
+                anyhow::bail!("unexpected component");
+            }
+        }
+    } else {
+        anyhow::bail!("invalid component");
+    }
+
     // update the message
     interaction
         .create_interaction_response(ctx, |response| {
             response
                 .kind(InteractionResponseType::UpdateMessage)
                 .interaction_response_data(|response_data| {
-                    response_data.content(create_content(&poll_data))
+                    response_data
+                        .content(create_content(&poll_data))
+                        .components(|c| c.set_action_rows(vec![row]))
                 })
         })
         .await?;
@@ -152,7 +174,7 @@ pub async fn cleaner(interval: Duration, poll_duration: Duration) {
 }
 
 fn create_content(poll_data: &PollData) -> String {
-    format!("Vote:\n{}", poll_data)
+    format!("Vote:\n{}", poll_data.options.join(","))
 }
 
 static POLLS: Lazy<RwLock<HashMap<InteractionId, PollData>>> =
@@ -164,20 +186,23 @@ struct PollData {
     votes: HashMap<UserId, String>,
 }
 
-impl Display for PollData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut vote_map = BTreeMap::<&str, u32>::new();
-        for option in &self.options {
-            vote_map.insert(option, 0);
-        }
-        for (_user, option) in self.votes.iter() {
-            if let Some(votes) = vote_map.get_mut(option.as_str()) {
-                *votes += 1;
+impl PollData {
+    fn votes_for(&self, vote_id: &str) -> u32 {
+        let mut votes = 0;
+        for vote in self.votes.values() {
+            if vote == vote_id {
+                votes += 1;
             }
         }
-        for (option, votes) in vote_map {
-            write!(f, "{}: {}\n", option, votes)?;
-        }
-        Ok(())
+        votes
     }
+}
+
+fn create_vote_button(option: &str, votes: u32) -> CreateButton {
+    let mut button = CreateButton::default();
+    button
+        .custom_id(option)
+        .label(format!("{}: {}", option, votes))
+        .style(ButtonStyle::Primary);
+    button
 }
