@@ -16,7 +16,6 @@ async fn main() -> anyhow::Result<()> {
         .context("invalid APPLICATION_ID")?;
 
     let intents = GatewayIntents::GUILD_MESSAGES;
-
     let mut client = Client::builder(discord_token, intents)
         .event_handler(Handler)
         .application_id(application_id)

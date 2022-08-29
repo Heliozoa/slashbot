@@ -119,8 +119,14 @@ pub async fn start(ctx: &Context, command: ApplicationCommandInteraction) -> any
 pub async fn vote(ctx: &Context, interaction: MessageComponentInteraction) -> anyhow::Result<()> {
     // save the user's vote in the poll data
     let mut lock = POLLS.write().await;
+    let poll_id = interaction
+        .message
+        .interaction
+        .as_ref()
+        .context("Missing interaction")?
+        .id;
     let poll_data = lock
-        .get_mut(&interaction.id)
+        .get_mut(&poll_id)
         .context("unexpected interaction id")?;
     let user_id = interaction
         .member
