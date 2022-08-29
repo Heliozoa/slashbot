@@ -37,8 +37,10 @@ struct Handler;
 impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, data_about_bot: serenity::model::prelude::Ready) {
         for guild in data_about_bot.guilds {
-            if let Err(err) = poll::create(guild.id, &ctx).await {
-                eprintln!("Failed to create poll command in {}: {err}", guild.id);
+            if guild.unavailable {
+                tracing::trace!("Guild unavailable: {}", guild.id);
+            } else if let Err(err) = poll::create(guild.id, &ctx).await {
+                tracing::error!("Failed to create poll command in {}: {err}", guild.id);
             }
         }
     }
@@ -50,13 +52,13 @@ impl EventHandler for Handler {
                 _ => return,
             },
             Interaction::MessageComponent(mci) => {
-                let msg = if let Some(mi) = mci.message.interaction.as_ref() {
-                    &mi.name
+                let (mi, msg) = if let Some(mi) = mci.message.interaction.as_ref() {
+                    (mi, &mi.name)
                 } else {
                     return;
                 };
                 match msg.as_str() {
-                    poll::COMMAND => poll::vote(&ctx, mci).await,
+                    poll::COMMAND => poll::vote(&ctx, &mci, mi).await,
                     _ => return,
                 }
             }

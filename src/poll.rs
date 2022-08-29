@@ -8,6 +8,7 @@ use serenity::{
             component::{ActionRowComponent, ButtonStyle},
             interaction::{
                 application_command::ApplicationCommandInteraction, InteractionResponseType,
+                MessageInteraction,
             },
         },
         id::{GuildId, InteractionId, UserId},
@@ -116,17 +117,16 @@ pub async fn start(ctx: &Context, command: ApplicationCommandInteraction) -> any
     Ok(())
 }
 
-pub async fn vote(ctx: &Context, interaction: MessageComponentInteraction) -> anyhow::Result<()> {
+pub async fn vote(
+    ctx: &Context,
+    interaction: &MessageComponentInteraction,
+    message_interaction: &MessageInteraction,
+) -> anyhow::Result<()> {
     // save the user's vote in the poll data
     let mut lock = POLLS.write().await;
-    let poll_id = interaction
-        .message
-        .interaction
-        .as_ref()
-        .context("Missing interaction")?
-        .id;
+
     let poll_data = lock
-        .get_mut(&poll_id)
+        .get_mut(&message_interaction.id)
         .context("unexpected interaction id")?;
     let user_id = interaction
         .member
