@@ -19,3 +19,6 @@ Options:
 ![Example of what the output of the poll command looks like](./docs/slashbot.png)
 
 The poll stops accepting new votes after 5 minutes.
+
+## License
+Licensed under the GNU General Public License Version 3 or any later version.
