@@ -1,15 +1,11 @@
 mod poll;
 
 use anyhow::Context as _;
-use serenity::{
-    async_trait,
-    model::{application::interaction::Interaction, id::GuildId},
-    prelude::*,
-};
-use std::{env, error::Error, time::Duration};
+use serenity::{async_trait, model::application::interaction::Interaction, prelude::*};
+use std::{env, time::Duration};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
     tracing_subscriber::fmt::init();
 
@@ -18,17 +14,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .context("missing APPLICATION_ID")?
         .parse()
         .context("invalid APPLICATION_ID")?;
-    let guild_id: u64 = env::var("GUILD_ID")
-        .context("missing GUILD_ID")?
-        .parse()
-        .context("invalid GUILD_ID")?;
 
     let intents = GatewayIntents::GUILD_MESSAGES;
 
     let mut client = Client::builder(discord_token, intents)
-        .event_handler(Handler {
-            guild_id: GuildId(guild_id),
-        })
+        .event_handler(Handler)
         .application_id(application_id)
         .await?;
 
@@ -42,17 +32,16 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     Ok(())
 }
 
-struct Handler {
-    guild_id: GuildId,
-}
+struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn ready(&self, ctx: Context, _data_about_bot: serenity::model::prelude::Ready) {
-        poll::create(self.guild_id, &ctx)
-            .await
-            .context("Failed to create poll command")
-            .unwrap();
+    async fn ready(&self, ctx: Context, data_about_bot: serenity::model::prelude::Ready) {
+        for guild in data_about_bot.guilds {
+            if let Err(err) = poll::create(guild.id, &ctx).await {
+                eprintln!("Failed to create poll command in {}: {err}", guild.id);
+            }
+        }
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {

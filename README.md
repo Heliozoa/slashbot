@@ -3,10 +3,7 @@ A simple Discord bot that provides a poll command using the [Slash Command API](
 
 Requires the following environment variables, which can be set in an `.env` file:
 - `APPLICATION_ID` from https://discord.com/developers/applications
-- `BOT_TOKEN` from https://discord.com/developers/applications/{APPLICATION_ID}/bot
-- `GUILD_ID` from right-clicking on a server and clicking `Copy ID`
-
-The program adds the poll command for the server identified by `GUILD_ID` on startup.
+- `DISCORD_TOKEN` from https://discord.com/developers/applications/{APPLICATION_ID}/bot
 
 ## Usage:
 Command name: `poll`

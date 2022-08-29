@@ -20,17 +20,38 @@ use tokio::time::Instant;
 
 pub const COMMAND: &str = "poll";
 
+static POLLS: Lazy<RwLock<HashMap<InteractionId, PollData>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+struct PollData {
+    start_time: Instant,
+    options: Vec<String>,
+    votes: HashMap<UserId, String>,
+}
+
+impl PollData {
+    fn votes_for(&self, vote_id: &str) -> u32 {
+        let mut votes = 0;
+        for vote in self.votes.values() {
+            if vote == vote_id {
+                votes += 1;
+            }
+        }
+        votes
+    }
+}
+
 pub async fn create(guild_id: GuildId, ctx: &Context) -> anyhow::Result<Command> {
     let res = guild_id
         .create_application_command(&ctx, |command| {
             command
                 .name(COMMAND)
-                .description("a simple poll command")
+                .description("A simple poll command.")
                 .create_option(|option| {
                     option
                         .name("options")
                         .kind(CommandOptionType::String)
-                        .description("comma separated list of options")
+                        .description("Comma-separated list of options.")
                         .required(true)
                 })
         })
@@ -164,27 +185,6 @@ pub async fn cleaner(interval: Duration, poll_duration: Duration) {
 
 fn create_content(poll_data: &PollData) -> String {
     format!("Vote:\n{}", poll_data.options.join(","))
-}
-
-static POLLS: Lazy<RwLock<HashMap<InteractionId, PollData>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
-
-struct PollData {
-    start_time: Instant,
-    options: Vec<String>,
-    votes: HashMap<UserId, String>,
-}
-
-impl PollData {
-    fn votes_for(&self, vote_id: &str) -> u32 {
-        let mut votes = 0;
-        for vote in self.votes.values() {
-            if vote == vote_id {
-                votes += 1;
-            }
-        }
-        votes
-    }
 }
 
 fn create_vote_button(option: &str, votes: u32) -> CreateButton {
