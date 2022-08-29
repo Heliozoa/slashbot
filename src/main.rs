@@ -3,10 +3,7 @@ mod poll;
 use anyhow::Context as _;
 use serenity::{
     async_trait,
-    model::{
-        id::GuildId,
-        interactions::{Interaction, InteractionData, InteractionMessage},
-    },
+    model::{application::interaction::Interaction, id::GuildId},
     prelude::*,
 };
 use std::{env, error::Error, time::Duration};
@@ -26,7 +23,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .parse()
         .context("invalid GUILD_ID")?;
 
-    let mut client = Client::builder(discord_token)
+    let intents = GatewayIntents::GUILD_MESSAGES;
+
+    let mut client = Client::builder(discord_token, intents)
         .event_handler(Handler {
             guild_id: GuildId(guild_id),
         })
@@ -57,25 +56,19 @@ impl EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        let res = match interaction.data.as_ref() {
-            Some(InteractionData::ApplicationCommand(cmd)) => match cmd.name.as_str() {
-                poll::COMMAND => poll::start(&ctx, &interaction, cmd).await,
+        let res = match interaction {
+            Interaction::ApplicationCommand(aci) => match aci.data.name.as_str() {
+                poll::COMMAND => poll::start(&ctx, aci).await,
                 _ => return,
             },
-            Some(InteractionData::MessageComponent(cmp)) => {
-                let msg =
-                    if let Some(InteractionMessage::Regular(msg)) = interaction.message.as_ref() {
-                        &msg.interaction
-                    } else {
-                        return;
-                    };
-                let (cmd, interaction_id) = if let Some(interaction) = msg {
-                    (interaction.name.as_str(), interaction.id)
+            Interaction::MessageComponent(mci) => {
+                let msg = if let Some(mi) = mci.message.interaction.as_ref() {
+                    &mi.name
                 } else {
                     return;
                 };
-                match cmd {
-                    poll::COMMAND => poll::vote(&ctx, &interaction, interaction_id, cmp).await,
+                match msg.as_str() {
+                    poll::COMMAND => poll::vote(&ctx, mci).await,
                     _ => return,
                 }
             }

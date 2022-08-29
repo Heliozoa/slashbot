@@ -3,12 +3,15 @@ use once_cell::sync::Lazy;
 use serenity::{
     builder::{CreateActionRow, CreateButton},
     model::{
-        id::{GuildId, InteractionId, UserId},
-        interactions::{
-            ApplicationCommand, ApplicationCommandInteractionData, ApplicationCommandOptionType,
-            ButtonStyle, Component, Interaction, InteractionMessage, InteractionResponseType,
-            MessageComponent,
+        application::{
+            command::{Command, CommandOptionType},
+            component::{ActionRowComponent, ButtonStyle},
+            interaction::{
+                application_command::ApplicationCommandInteraction, InteractionResponseType,
+            },
         },
+        id::{GuildId, InteractionId, UserId},
+        prelude::interaction::message_component::MessageComponentInteraction,
     },
     prelude::*,
 };
@@ -17,7 +20,7 @@ use tokio::time::Instant;
 
 pub const COMMAND: &str = "poll";
 
-pub async fn create(guild_id: GuildId, ctx: &Context) -> anyhow::Result<ApplicationCommand> {
+pub async fn create(guild_id: GuildId, ctx: &Context) -> anyhow::Result<Command> {
     let res = guild_id
         .create_application_command(&ctx, |command| {
             command
@@ -26,7 +29,7 @@ pub async fn create(guild_id: GuildId, ctx: &Context) -> anyhow::Result<Applicat
                 .create_option(|option| {
                     option
                         .name("options")
-                        .kind(ApplicationCommandOptionType::String)
+                        .kind(CommandOptionType::String)
                         .description("comma separated list of options")
                         .required(true)
                 })
@@ -36,13 +39,10 @@ pub async fn create(guild_id: GuildId, ctx: &Context) -> anyhow::Result<Applicat
     Ok(res)
 }
 
-pub async fn start(
-    ctx: &Context,
-    interaction: &Interaction,
-    command: &ApplicationCommandInteractionData,
-) -> anyhow::Result<()> {
+pub async fn start(ctx: &Context, command: ApplicationCommandInteraction) -> anyhow::Result<()> {
     // collect and validate poll options
     let mut options = command
+        .data
         .options
         .iter()
         .find(|o| o.name == "options")
@@ -69,7 +69,7 @@ pub async fn start(
     };
 
     // respond with poll
-    interaction
+    command
         .create_interaction_response(&ctx.http, |response| {
             response
                 .kind(InteractionResponseType::ChannelMessageWithSource)
@@ -91,20 +91,15 @@ pub async fn start(
 
     // on success, store poll data
     let mut lock = POLLS.write().await;
-    lock.insert(interaction.id, poll_data);
+    lock.insert(command.id, poll_data);
     Ok(())
 }
 
-pub async fn vote(
-    ctx: &Context,
-    interaction: &Interaction,
-    interaction_id: InteractionId,
-    component: &MessageComponent,
-) -> anyhow::Result<()> {
+pub async fn vote(ctx: &Context, interaction: MessageComponentInteraction) -> anyhow::Result<()> {
     // save the user's vote in the poll data
     let mut lock = POLLS.write().await;
     let poll_data = lock
-        .get_mut(&interaction_id)
+        .get_mut(&interaction.id)
         .context("unexpected interaction id")?;
     let user_id = interaction
         .member
@@ -112,32 +107,26 @@ pub async fn vote(
         .context("missing member")?
         .user
         .id;
-    poll_data.votes.insert(user_id, component.custom_id.clone());
+    poll_data
+        .votes
+        .insert(user_id, interaction.data.custom_id.clone());
 
     // create updated buttons
     let mut row = CreateActionRow::default();
-    let msg = interaction
-        .message
-        .as_ref()
-        .context("missing message in interaction")?;
     // the first (and only) action row should contain only the voting buttons
-    let button_row = if let InteractionMessage::Regular(msg) = msg {
-        msg.components.first().context("missing action row")?
-    } else {
-        anyhow::bail!("invalid message type in interaction");
-    };
-    if let Component::ActionRow(button_row) = button_row {
-        for component in button_row.components.iter() {
-            if let Component::Button(b) = component {
-                let custom_id = b.custom_id.as_ref().context("missing custom id")?;
-                let votes = poll_data.votes_for(custom_id);
-                row.add_button(create_vote_button(custom_id, votes));
-            } else {
-                anyhow::bail!("unexpected component");
-            }
+    let button_row = interaction
+        .message
+        .components
+        .first()
+        .context("missing action row")?;
+    for component in button_row.components.iter() {
+        if let ActionRowComponent::Button(b) = component {
+            let custom_id = b.custom_id.as_ref().context("missing custom id")?;
+            let votes = poll_data.votes_for(custom_id);
+            row.add_button(create_vote_button(custom_id, votes));
+        } else {
+            anyhow::bail!("unexpected component");
         }
-    } else {
-        anyhow::bail!("invalid component");
     }
 
     // update the message
