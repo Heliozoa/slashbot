@@ -1,7 +1,7 @@
 [package]
 name = "slashbot"
 version = "0.1.0"
-authors = ["Daniel Martinez <daniel.x.martinez@helsinki.fi>"]
+authors = ["Heliozoa <daniel.x.martinez@helsinki.fi>"]
 edition = "2021"
 license = "GPL-3.0-or-later"
 
