@@ -18,4 +18,4 @@ Options:
 The poll stops accepting new votes after 5 minutes.
 
 ## License
-Licensed under the GNU General Public License Version 3 or any later version.
+Licensed under the GNU Affero General Public License Version 3 or any later version.
